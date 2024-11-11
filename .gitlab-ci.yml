@@ -1,0 +1,61 @@
+stages:
+  - plan
+  - apply
+  - deploy
+  - hold_destroy_approval 
+  - destroy 
+
+variables:
+  AWS_DEFAULT_REGION: "us-east-2"  
+
+before_script:
+  - apt-get update && apt-get install -y unzip
+  - curl -fsSL https://github.com/hashicorp/terraform/releases/download/v1.5.3/terraform_1.5.3_linux_amd64.zip -o terraform.zip
+  - unzip terraform.zip
+  - mv terraform /usr/local/bin/
+  - terraform --version
+  - aws --version
+
+# ~~~~~~~~~~~~~~~~~~ Run terraform plan to preview infrastructure changes ~~~~~~~~~~~~~~~~ #
+
+terraform_plan:
+  stage: plan
+  script:
+    - cd terraform
+    - terraform init
+    - terraform plan 
+  only:
+    - main  
+
+# ~~~~~~~~~~~~~~~~~~ Apply Terraform to provision the infrastructure ~~~~~~~~~~~~~~~~~~~~~ #
+
+deploy:
+  stage: apply
+  script:
+    - cd terraform
+    - terraform apply -auto-approve 
+  only:
+    - main  
+
+# ~~~~~~~~~~~~~~~~~ Manual approval stage before destroying the infrastructure ~~~~~~~~~~ #
+
+hold_destroy_approval:
+  stage: hold_destroy_approval
+  script:
+    - echo "Waiting for manual approval to destroy infrastructure."
+  when: manual
+# Don't allow the pipeline to continue without approval
+  allow_failure: false  
+  only:
+    - main  
+
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ Destroy the infrastructure ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ #
+terraform_destroy:
+  stage: destroy
+  script:
+    - cd terraform
+    - terraform destroy -auto-approve -var "s3_bucket_name=$TF_BUCKET_NAME"
+  # Runs after manual approval in the `hold_destroy_approval` stage
+  when: on_success  
+  only:
+    - main  S
